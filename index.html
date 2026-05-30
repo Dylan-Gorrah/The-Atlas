@@ -65,6 +65,8 @@
   .sec-hd { display:flex; align-items:baseline; justify-content:space-between; margin:18px 2px 10px; }
   .sec-hd h2 { font-family:var(--mono); font-size:11px; text-transform:uppercase; letter-spacing:2px; color:var(--ink-dim); font-weight:500; }
   .sec-hd .ct { font-family:var(--mono); font-size:10px; color:var(--ink-faint); }
+  .nav button.badge { position:relative; }
+  .nav button.badge::after { content:""; position:absolute; top:6px; right:8px; width:6px; height:6px; background:var(--accent); border-radius:50%; }
   .card { background:var(--panel); border:1px solid var(--line-bright); padding:14px; margin-bottom:9px; position:relative; }
   .card.acc::before { content:""; position:absolute; left:0; top:0; bottom:0; width:2px; background:var(--accent); }
   .row { display:flex; align-items:center; justify-content:space-between; gap:10px; }
@@ -178,8 +180,18 @@ function seed() {
     money: { items:[], goals:[{id:1,title:'Emergency fund',target:1000,saved:0}] },
     health: { habits:[{id:1,name:'Move / train',log:{}},{id:2,name:'Deep work',log:{}}], metrics:[] },
     ideas: [], learning: [{id:1,title:'Crypto / trading basics',progress:0,note:''}],
+    inbox: [],
   };
 }
+
+/* inbox note kinds — written by Claude from chat */
+const KIND = {
+  reminder: { label:'reminder', col:'var(--amber)' },
+  push:     { label:'push',     col:'var(--danger)' },
+  idea:     { label:'idea',     col:'var(--cyan)' },
+  support:  { label:'support',  col:'var(--accent)' },
+  flag:     { label:'heads-up', col:'var(--ink-dim)' },
+};
 
 function hydrate(d){
   const base = seed();
@@ -224,7 +236,8 @@ function App(){
   const up=fn=>setData(d=>{const c=JSON.parse(JSON.stringify(d)); fn(c); return c;});
   const dateStr=new Date().toLocaleDateString([],{weekday:'long',day:'2-digit',month:'short'}).toUpperCase();
 
-  const TABS=[['dash','dash'],['life','life'],['work','work'],['money','money'],['health','health'],['ideas','ideas'],['dump','dump']];
+  const unread = (data.inbox||[]).filter(m=>!m.read).length;
+  const TABS=[['dash','dash'],['inbox', unread?`inbox (${unread})`:'inbox'],['life','life'],['work','work'],['money','money'],['health','health'],['ideas','ideas'],['dump','dump']];
 
   return (
     <div className="wrap">
@@ -237,11 +250,12 @@ function App(){
       </div>
 
       <div className="nav">{TABS.map(([id,l])=>(
-        <button key={id} className={tab===id?'on':''} onClick={()=>setTab(id)}>{l}</button>))}</div>
+        <button key={id} className={(tab===id?'on ':'')+(id==='inbox'&&unread?'badge':'')} onClick={()=>setTab(id)}>{l}</button>))}</div>
 
       {err && <div style={{border:'1px solid var(--danger)',color:'var(--danger)',fontFamily:'var(--mono)',fontSize:11,padding:'10px 12px',marginBottom:14}}>CONNECTION ISSUE — running on fallback. {err}</div>}
 
       {tab==='dash' && <Dash data={data} up={up} go={setTab} />}
+      {tab==='inbox' && <Inbox data={data} up={up} />}
       {tab==='life' && <Life data={data} up={up} />}
       {tab==='work' && <Work data={data} up={up} />}
       {tab==='money' && <Money data={data} up={up} />}
@@ -270,10 +284,22 @@ function Dash({ data, up, go }){
   const streak = h => { let s=0; for(let i=0;i<60;i++){const d=new Date();d.setDate(d.getDate()-i); if(h.log[keyOf(d)])s++; else if(i>0)break;} return s; };
   const topHabit = data.health.habits.map(h=>({n:h.name,s:streak(h)})).sort((a,b)=>b.s-a.s)[0];
   const balance = data.money.items.reduce((a,b)=>a+(b.kind==='in'?b.amount:-b.amount),0);
+  const unread = (data.inbox||[]).filter(m=>!m.read);
 
   return (
     <div>
       <div className="sec-hd"><h2>// Control Panel</h2><span className="ct">{TODAY}</span></div>
+      {unread.length>0 && <div className="tile wide" style={{marginBottom:9,borderColor:'var(--accent)'}}>
+        <div className="lbl" style={{color:'var(--accent)'}}>◉ From Claude · {unread.length} new</div>
+        {unread.slice(0,3).map(m=>(
+          <div className="listrow" key={m.id}>
+            <span style={{display:'flex',gap:8,alignItems:'flex-start'}}>
+              <span className="chip" style={{color:(KIND[m.kind]||KIND.flag).col,borderColor:(KIND[m.kind]||KIND.flag).col,flex:'0 0 auto'}}>{(KIND[m.kind]||KIND.flag).label}</span>
+              <span style={{fontSize:13}}>{m.text}</span></span>
+          </div>
+        ))}
+        <div className="cap" style={{marginTop:8,cursor:'pointer',color:'var(--accent)'}} onClick={()=>go('inbox')}>open inbox →</div>
+      </div>}
       <div className="grid">
         <div className="tile" onClick={()=>go('work')} style={{cursor:'pointer'}}>
           <div className="lbl">Open tasks</div><div className="big acc">{tasks.length}</div>
@@ -442,6 +468,35 @@ function Ideas({ data, up }){
           <button className="btn sm" onClick={()=>up(d=>{const x=d.learning.find(z=>z.id===l.id); x.progress=Math.min(100,x.progress+10);})}>+</button>
           <button className="x" onClick={()=>up(d=>{d.learning=d.learning.filter(z=>z.id!==l.id);})}>✕</button></span></div>
       <div className="bar"><i style={{width:l.progress+'%'}}/></div></div>))}
+  </div>);
+}
+
+/* ---------- INBOX (notes from Claude) ---------- */
+function Inbox({ data, up }){
+  const notes = data.inbox||[];
+  const unread = notes.filter(m=>!m.read).length;
+  const markAll = ()=>up(d=>{(d.inbox||[]).forEach(m=>m.read=true);});
+  const clearRead = ()=>up(d=>{d.inbox=(d.inbox||[]).filter(m=>!m.read);});
+  return (<div>
+    <div className="sec-hd"><h2>// Inbox · from Claude</h2><span className="ct">{unread} unread</span></div>
+    <div className="add" style={{justifyContent:'flex-end'}}>
+      <button className="btn sm ghost" onClick={markAll}>mark all read</button>
+      <button className="btn sm ghost" onClick={clearRead}>clear read</button>
+    </div>
+    {notes.length===0 && <div className="empty">NO MESSAGES — TALK TO CLAUDE IN CHAT AND I'LL LEAVE NOTES HERE</div>}
+    {notes.map(m=>{ const k=KIND[m.kind]||KIND.flag; return (
+      <div className="card" key={m.id} style={{opacity:m.read?0.5:1, borderLeftColor:k.col}}>
+        <div className="row" style={{marginBottom:6}}>
+          <span className="chip" style={{color:k.col,borderColor:k.col}}>{k.label}</span>
+          <span style={{display:'flex',gap:8,alignItems:'center'}}>
+            <span style={{fontFamily:'var(--mono)',fontSize:9,color:'var(--ink-faint)'}}>{new Date(m.ts).toLocaleDateString([],{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}</span>
+            {!m.read && <button className="btn sm" onClick={()=>up(d=>{const x=(d.inbox||[]).find(z=>z.id===m.id); if(x)x.read=true;})}>read</button>}
+            <button className="x" onClick={()=>up(d=>{d.inbox=(d.inbox||[]).filter(z=>z.id!==m.id);})}>✕</button>
+          </span>
+        </div>
+        <div style={{fontSize:14,lineHeight:1.55,whiteSpace:'pre-wrap'}}>{m.text}</div>
+      </div>);
+    })}
   </div>);
 }
 
