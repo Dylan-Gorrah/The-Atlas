@@ -471,7 +471,7 @@ function DataModal({ data, close }){
     <h3>Your hub data (paste to Claude in chat)</h3>
     <pre>{JSON.stringify(data,null,2)}</pre>
     <div style={{marginTop:12}}><button className="btn" onClick={close}>Close</button></div>
-  </div>);
+  </div></div>);
 }
 
 ReactDOM.render(<App/>, document.getElementById('root'));
