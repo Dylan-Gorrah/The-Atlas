@@ -1,4 +1,15 @@
-<div id="root"></div>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#07080a">
+<title>The Atlas</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Archivo+Black&family=JetBrains+Mono:wght@400;500;700&display=swap');
@@ -111,8 +122,11 @@
   .modal h3 { font-family:var(--mono); font-size:12px; letter-spacing:1.5px; text-transform:uppercase; color:var(--accent); margin-bottom:12px; }
   .modal pre { background:var(--panel-2); border:1px solid var(--line); padding:10px; font-family:var(--mono); font-size:10px; color:var(--ink-dim); overflow:auto; white-space:pre-wrap; word-break:break-all; }
 </style>
-
-<script type="text/babel">
+<style> html,body{margin:0;background:#07080a;} </style>
+</head>
+<body>
+<div id="root"><div style="font-family:monospace;color:#828892;text-align:center;padding:120px 0;letter-spacing:2px;font-size:12px">BOOTING THE ATLAS…</div></div>
+<script type="text/babel" data-presets="react">
 const { useState, useEffect, useMemo } = React;
 const KEY = 'lifehub:state';
 const PROJECT = 'THE ATLAS';
@@ -127,28 +141,31 @@ const SB_ROW_ID = 'dylan';
 
 const Store = {
   live: !!(SUPABASE_URL && SUPABASE_KEY),
+  hasLocal(){ return typeof window!=='undefined' && window.storage && typeof window.storage.get==='function'; },
   async load() {
     if (this.live) {
-      try {
-        const r = await fetch(`${SUPABASE_URL}/rest/v1/hub_state?id=eq.${SB_ROW_ID}&select=data`, {
-          headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }});
-        const j = await r.json();
-        return j[0] ? j[0].data : null;
-      } catch(e){ console.error(e); }
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/hub_state?id=eq.${SB_ROW_ID}&select=data`, {
+        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }});
+      if(!r.ok) throw new Error('Supabase load '+r.status+': '+(await r.text()).slice(0,120));
+      const j = await r.json();
+      return j[0] ? j[0].data : null;
     }
-    try { const r = await window.storage.get(KEY); return r && r.value ? JSON.parse(r.value) : null; } catch { return null; }
+    if(this.hasLocal()){ try { const r = await window.storage.get(KEY); return r && r.value ? JSON.parse(r.value) : null; } catch { return null; } }
+    try { const v = localStorage.getItem(KEY); return v ? JSON.parse(v) : null; } catch { return null; }
   },
   async save(data) {
     if (this.live) {
       try {
-        await fetch(`${SUPABASE_URL}/rest/v1/hub_state?id=eq.${SB_ROW_ID}`, {
+        const r = await fetch(`${SUPABASE_URL}/rest/v1/hub_state?id=eq.${SB_ROW_ID}`, {
           method:'PATCH',
           headers:{ apikey:SUPABASE_KEY, Authorization:`Bearer ${SUPABASE_KEY}`, 'Content-Type':'application/json', Prefer:'return=minimal' },
           body: JSON.stringify({ data })});
-        return;
+        if(!r.ok) console.error('Supabase save', r.status);
       } catch(e){ console.error(e); }
+      return;
     }
-    try { await window.storage.set(KEY, JSON.stringify(data)); } catch(e){ console.error(e); }
+    if(this.hasLocal()){ try { await window.storage.set(KEY, JSON.stringify(data)); } catch(e){ console.error(e); } return; }
+    try { localStorage.setItem(KEY, JSON.stringify(data)); } catch(e){ console.error(e); }
   }
 };
 
@@ -194,8 +211,12 @@ function App(){
   const [tab,setTab]=useState('dash');
   const [clock,setClock]=useState('');
   const [showData,setShowData]=useState(false);
+  const [err,setErr]=useState('');
 
-  useEffect(()=>{ (async()=>{ const d=await Store.load(); setData(hydrate(d)); })(); },[]);
+  useEffect(()=>{ (async()=>{
+    try { const d=await Store.load(); setData(hydrate(d)); }
+    catch(e){ setErr(String(e.message||e)); setData(hydrate(null)); }
+  })(); },[]);
   useEffect(()=>{ if(data) Store.save(data); },[data]);
   useEffect(()=>{ const t=()=>setClock(new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})); t(); const id=setInterval(t,20000); return()=>clearInterval(id); },[]);
 
@@ -217,6 +238,8 @@ function App(){
 
       <div className="nav">{TABS.map(([id,l])=>(
         <button key={id} className={tab===id?'on':''} onClick={()=>setTab(id)}>{l}</button>))}</div>
+
+      {err && <div style={{border:'1px solid var(--danger)',color:'var(--danger)',fontFamily:'var(--mono)',fontSize:11,padding:'10px 12px',marginBottom:14}}>CONNECTION ISSUE — running on fallback. {err}</div>}
 
       {tab==='dash' && <Dash data={data} up={up} go={setTab} />}
       {tab==='life' && <Life data={data} up={up} />}
@@ -453,6 +476,5 @@ function DataModal({ data, close }){
 
 ReactDOM.render(<App/>, document.getElementById('root'));
 </script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+</body>
+</html>
